@@ -1,25 +1,25 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
+const BOT_TOKEN = process.env.BOT_TOKEN || '8961524303:AAHhrvbJQsegAdqtGy6AeuPZZb4Z-QM8aUQ';
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// Database yeroo gabaabaa
+// Database yeroo gabaabaa (In-Memory Database)
 const userSessions = {}; 
 const pendingUsers = {}; 
 const verifiedUsers = {}; 
 
-// Simple & Reliable Email Checker
 function isValidEmail(email) {
   return email && email.includes('@') && email.includes('.');
 }
 
-// 1. Webhook - Telegram Bot Messages
+// 1. Telegram Webhook Endpoint
 app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
   try {
     const message = req.body.message;
@@ -33,7 +33,7 @@ app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
     if (text === '/start') {
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
-        text: 'Baga nagaan dhufte gara Apex Forex Assistant Bot! 📈\n\nApp Apex Forex irratti akka galmaa\'uu dandeessuuf, maaloo Email kee inni sirrii ta\'e naaf ergi:'
+        text: 'Baga nagaan dhufte gara Apex Forex Assistant Bot! 📈\n\nApp Apex Forex Edge irratti akka galmaa\'uu dandeessuuf, maaloo Email kee inni sirrii ta\'e naaf ergi:'
       });
     } else if (isValidEmail(text)) {
       const email = text.toLowerCase();
@@ -41,7 +41,7 @@ app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
-        text: `✅ Email kee (${email}) milkaa'inaan galmeeffameera!\n\nAmma gara App keenyaa deemuun Register tuquudhaan OTP ergafadhu.`
+        text: `✅ Email kee (${email}) milkaa'inaan galmeeffameera!\n\nAmma gara Web Application keenyaa deemuun Register tuquudhaan OTP ergafadhu.`
       });
     } else {
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -57,7 +57,7 @@ app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
   }
 });
 
-// Set Webhook Endpoint
+// Set Webhook Auto Endpoint
 app.get('/set-webhook', async (req, res) => {
   try {
     const serverUrl = `https://${req.get('host')}`;
@@ -100,10 +100,10 @@ app.post('/api/register', async (req, res) => {
   try {
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: targetChatId,
-      text: `🔑 Lakkoofsi OTP kee Apex Forex App: ${otp}\n\nLakkoofsa kana eenyuufuu hin qoodin!`
+      text: `🔑 Lakkoofsi OTP kee Apex Forex Edge: ${otp}\n\nLakkoofsa kana eenyuufuu hin qoodin!`
     });
 
-    res.json({ success: true, message: "OTPn Telegram Bot keetiin siif ergameera!" });
+    res.json({ success: true, message: 'OTPn Telegram Bot keetiin siif ergameera!' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'OTP erguu irratti rakkoon uumame.' });
   }
@@ -130,7 +130,7 @@ app.post('/api/verify-otp', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('Apex Forex Backend Server is Running Live!');
+  res.send('Apex Forex Edge Backend Server is Live!');
 });
 
 const PORT = process.env.PORT || 3000;
