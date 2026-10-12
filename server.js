@@ -14,9 +14,9 @@ const userSessions = {};
 const pendingUsers = {}; 
 const verifiedUsers = {}; 
 
+// Simple & Reliable Email Checker
 function isValidEmail(email) {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+\$/;
-  return emailRegex.test(email);
+  return email && email.includes('@') && email.includes('.');
 }
 
 // 1. Webhook - Telegram Bot Messages
