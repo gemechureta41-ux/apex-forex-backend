@@ -1,104 +1,141 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const TelegramBot = require('node-telegram-bot-api');
 const cors = require('cors');
+const axios = require('axios');
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 app.use(cors());
 
-// Telegram Bot Token Environment Variable irraa fudhama ykn kallattiidhaan taa'a
-const BOT_TOKEN = process.env.BOT_TOKEN || '8961524303:AAHhrvbJQsegAdqtGy6AeuPZZb4Z-QM8aUQ';
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-const registeredUsers = {}; // { email: chatId }
-const otpStore = {};        // { email: { otp: "1234", expiresAt: timestamp } }
-const userCredentials = {}; // { email: password }
+// Database yeroo gabaabaa (In-Memory Database)
+const userSessions = {}; // telegramChatId -> email
+const pendingUsers = {}; // email -> { password, otp, telegramChatId }
+const verifiedUsers = {}; // email -> password
 
-// Bot Commands
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(
-    chatId,
-    `Baga nagaan dhufte gara Apex Forex Assistant Bot! 📈\n\nApp Apex Forex irratti akka galmaa'uu dandeessuuf, maaloo Email kee inni sirrii ta'e naaf ergi:`
-  );
-});
-
-bot.on('message', (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text ? msg.text.trim().toLowerCase() : '';
-
-  if (text.startsWith('/start')) return;
-
+// Email Format Validator
+function isValidEmail(email) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+\$/;
-  if (emailRegex.test(text)) {
-    registeredUsers[text] = chatId;
-    bot.sendMessage(
-      chatId,
-      `✅ Email **${text}** milkaa'inaan galmeeffameera!\n\nAmmass app Apex Forex irratti email kanaan register gochuu dandeessa.`
-    );
-  } else {
-    bot.sendMessage(chatId, `⚠️ Maaloo Email sirrii ta'e galchaa (fkn: example@gmail.com).`);
+  return emailRegex.test(email);
+}
+
+// 1. Webhook - Telegram Bot Messages Update
+app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
+  try {
+    const message = req.body.message;
+    if (!message || !message.text) {
+      return res.sendStatus(200);
+    }
+
+    const chatId = message.chat.id;
+    const text = message.text.trim();
+
+    if (text === '/start') {
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: 'Baga nagaan dhufte gara Apex Forex Assistant Bot! 📈\n\nApp Apex Forex irratti akka galmaa\'uu dandeessuuf, maaloo Email kee inni sirrii ta\'e naaf ergi:'
+      });
+    } else if (isValidEmail(text)) {
+      const email = text.toLowerCase();
+      userSessions[chatId] = email;
+
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: `✅ Email kee (${email}) milkaa'inaan galmeeffameera!\n\nAmma gara App keenyaa deemuun Register tuquudhaan OTP ergafadhu.`
+      });
+    } else {
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: '⚠️ Maaloo Email sirrii ta\'e galchaa (fkn: example@gmail.com).'
+      });
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('Error handling Telegram Webhook:', error.message);
+    res.sendStatus(200);
   }
 });
 
-// API Routes
+// Telegram Webhook Auto-Set Route
+app.get('/set-webhook', async (req, res) => {
+  try {
+    const serverUrl = `https://${req.get('host')}`;
+    const webhookUrl = `${serverUrl}/bot${BOT_TOKEN}`;
+    const response = await axios.get(`${TELEGRAM_API}/setWebhook?url=${webhookUrl}`);
+    res.json({ success: true, message: 'Webhook set successfully', data: response.data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 2. API - Register & Generate OTP
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body;
-  const cleanEmail = email.toLowerCase().trim();
 
-  if (!registeredUsers[cleanEmail]) {
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email fi Password galchuu qabda!' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  let targetChatId = null;
+  for (const [chatId, userEmail] of Object.entries(userSessions)) {
+    if (userEmail === cleanEmail) {
+      targetChatId = chatId;
+      break;
+    }
+  }
+
+  if (!targetChatId) {
     return res.status(400).json({
       success: false,
-      message: 'Email kun bot telegram irratti hin galmeeffamne! Dura Telegram Bot (@apex_forex_assistant_bot) irratti email kee galmeessi.'
+      message: 'Madaala Telegram: Dura Telegram Bot keenya (@apex_forex_assistant_bot) irratti /start jedhii Email kee ergi!'
     });
   }
 
   const otp = Math.floor(1000 + Math.random() * 9000).toString();
-  otpStore[cleanEmail] = {
-    otp: otp,
-    password: password,
-    expiresAt: Date.now() + 5 * 60 * 1000
-  };
+  pendingUsers[cleanEmail] = { password, otp, chatId: targetChatId };
 
-  const chatId = registeredUsers[cleanEmail];
   try {
-    await bot.sendMessage(
-      chatId,
-      `🔑 **Apex Forex Verification Code:**\n\nCode kee: **${otp}**\n\nCode kun daqiiqaa 5 qofaaf hojjeta.`
-    );
-    return res.json({ success: true, message: 'Verification Code (OTP) gara Telegram Bot keetiitti ergameera!' });
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: targetChatId,
+      text: `🔑 Lakkoofsi OTP kee Apex Forex App: ${otp}\n\nLakkoofsa kana eenyuufuu hin qoodin!`
+    });
+
+    res.json({ success: true, message: 'OTP'n Telegram Bot keetiin siif ergameera!' });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'OTP erguu irratti dogoggorri uumameera.' });
+    res.status(500).json({ success: false, message: 'OTP erguu irratti rakkoon uumame.' });
   }
 });
 
+// 3. API - Verify OTP
 app.post('/api/verify-otp', (req, res) => {
   const { email, otp } = req.body;
-  const cleanEmail = email.toLowerCase().trim();
-  const record = otpStore[cleanEmail];
+  const cleanEmail = email ? email.trim().toLowerCase() : '';
 
-  if (!record) return res.status(400).json({ success: false, message: 'OTP hin fundhamne ykn expire ta\'eera.' });
+  const pendingUser = pendingUsers[cleanEmail];
 
-  if (record.otp === otp) {
-    userCredentials[cleanEmail] = record.password;
-    delete otpStore[cleanEmail];
-    return res.json({ success: true, message: 'Galmeen kee milkaa\'inaan xumurameera!' });
+  if (!pendingUser) {
+    return res.status(400).json({ success: false, message: 'Koodiin OTP hin argamne ykn yeroseen darbeera.' });
+  }
+
+  if (pendingUser.otp === otp) {
+    verifiedUsers[cleanEmail] = pendingUser.password;
+    delete pendingUsers[cleanEmail];
+    return res.json({ success: true, message: 'Galmeen kee milkaa'inaan xumurameera!' });
   } else {
-    return res.status(400).json({ success: false, message: 'OTP galchite sirrii miti!' });
+    return res.status(400).json({ success: false, message: 'Koodiin OTP galchite sirrii miti!' });
   }
 });
 
-app.post('/api/login', (req, res) => {
-  const { email, password } = req.body;
-  const cleanEmail = email.toLowerCase().trim();
-
-  if (userCredentials[cleanEmail] && userCredentials[cleanEmail] === password) {
-    return res.json({ success: true, message: 'Login Successful!' });
-  } else {
-    return res.status(400).json({ success: false, message: 'Email ykn Password dogoggora!' });
-  }
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.send('Apex Forex Backend Server is Running Live!');
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server Apex Forex PORT ${PORT} irratti jalqabeera...`));
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
