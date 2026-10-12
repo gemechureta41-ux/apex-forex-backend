@@ -9,18 +9,17 @@ app.use(cors());
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// Database yeroo gabaabaa (In-Memory Database)
-const userSessions = {}; // telegramChatId -> email
-const pendingUsers = {}; // email -> { password, otp, telegramChatId }
-const verifiedUsers = {}; // email -> password
+// Database yeroo gabaabaa
+const userSessions = {}; 
+const pendingUsers = {}; 
+const verifiedUsers = {}; 
 
-// Email Format Validator
 function isValidEmail(email) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+\$/;
   return emailRegex.test(email);
 }
 
-// 1. Webhook - Telegram Bot Messages Update
+// 1. Webhook - Telegram Bot Messages
 app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
   try {
     const message = req.body.message;
@@ -58,7 +57,7 @@ app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
   }
 });
 
-// Telegram Webhook Auto-Set Route
+// Set Webhook Endpoint
 app.get('/set-webhook', async (req, res) => {
   try {
     const serverUrl = `https://${req.get('host')}`;
@@ -104,7 +103,7 @@ app.post('/api/register', async (req, res) => {
       text: `🔑 Lakkoofsi OTP kee Apex Forex App: ${otp}\n\nLakkoofsa kana eenyuufuu hin qoodin!`
     });
 
-    res.json({ success: true, message: 'OTP'n Telegram Bot keetiin siif ergameera!' });
+    res.json({ success: true, message: "OTPn Telegram Bot keetiin siif ergameera!" });
   } catch (error) {
     res.status(500).json({ success: false, message: 'OTP erguu irratti rakkoon uumame.' });
   }
@@ -124,13 +123,12 @@ app.post('/api/verify-otp', (req, res) => {
   if (pendingUser.otp === otp) {
     verifiedUsers[cleanEmail] = pendingUser.password;
     delete pendingUsers[cleanEmail];
-    return res.json({ success: true, message: 'Galmeen kee milkaa'inaan xumurameera!' });
+    return res.json({ success: true, message: "Galmeen kee milkaa'inaan xumurameera!" });
   } else {
     return res.status(400).json({ success: false, message: 'Koodiin OTP galchite sirrii miti!' });
   }
 });
 
-// Health check endpoint
 app.get('/', (req, res) => {
   res.send('Apex Forex Backend Server is Running Live!');
 });
